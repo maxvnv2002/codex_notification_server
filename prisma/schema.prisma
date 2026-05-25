@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PairingCodeStatus {
+  ACTIVE
+  USED
+  REVOKED
+  EXPIRED
+}
+
+model TelegramUser {
+  id             String        @id @default(uuid())
+  telegramChatId String        @unique
+  username       String?
+  firstName      String?
+  lastName       String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  pairingCodes   PairingCode[]
+  devices        Device[]
+}
+
+model PairingCode {
+  id                   String            @id @default(uuid())
+  telegramUserId       String
+  telegramUser         TelegramUser      @relation(fields: [telegramUserId], references: [id], onDelete: Cascade)
+  code                 String            @unique
+  status               PairingCodeStatus
+  expiresAt            DateTime
+  usedAt               DateTime?
+  revokedAt            DateTime?
+  expirationNotifiedAt DateTime?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@index([telegramUserId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model Device {
+  id               String            @id @default(uuid())
+  telegramUserId   String
+  telegramUser     TelegramUser      @relation(fields: [telegramUserId], references: [id], onDelete: Cascade)
+  deviceId         String            @unique
+  deviceName       String
+  deviceSecret     String
+  revokedAt        DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  lastSeenAt       DateTime?
+  notificationLogs NotificationLog[]
+
+  @@index([telegramUserId])
+}
+
+model NotificationLog {
+  id             String   @id @default(uuid())
+  deviceId       String
+  device         Device   @relation(fields: [deviceId], references: [deviceId], onDelete: Cascade)
+  codexSessionId String?
+  codexTurnId    String?
+  projectName    String?
+  gitBranch      String?
+  message        String
+  createdAt      DateTime @default(now())
+
+  @@index([deviceId])
+  @@index([codexSessionId])
+  @@index([codexTurnId])
+  @@unique([deviceId, codexSessionId, codexTurnId])
+}
