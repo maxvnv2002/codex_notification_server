@@ -1,6 +1,7 @@
 import { getServerEnv } from "@/lib/env";
 
 const TELEGRAM_TEXT_LIMIT = 4096;
+const TELEGRAM_REQUEST_TIMEOUT_MS = 8000;
 
 type TelegramApiResponse = {
   ok: boolean;
@@ -28,9 +29,12 @@ export function limitTelegramText(text: string): string {
 
 export async function sendTelegramMessage(chatId: string, text: string): Promise<void> {
   const { TELEGRAM_BOT_TOKEN } = getServerEnv();
-  const response = await fetch(
-    `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-    {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TELEGRAM_REQUEST_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: {
         "content-type": "application/json"
@@ -39,9 +43,22 @@ export async function sendTelegramMessage(chatId: string, text: string): Promise
         chat_id: chatId,
         text: limitTelegramText(text),
         disable_web_page_preview: true
-      })
+      }),
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new TelegramApiError(
+        `Telegram API sendMessage timed out after ${TELEGRAM_REQUEST_TIMEOUT_MS}ms`
+      );
     }
-  );
+
+    throw new TelegramApiError(
+      `Telegram API sendMessage failed: ${error instanceof Error ? error.message : "network error"}`
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
 
   let payload: TelegramApiResponse | null = null;
 
