@@ -226,7 +226,7 @@ cd /opt/codex-notifier
 git fetch origin main
 git checkout main
 git reset --hard origin/main
-docker compose -p codex-notifier --env-file .env.production -f docker-compose.app.yml up -d --build --remove-orphans
+docker compose -p codex-notifier --env-file .env.production -f docker-compose.app.yml up -d --build
 curl -fsS http://127.0.0.1:${APP_HOST_PORT:-3010}/api/health
 ```
 

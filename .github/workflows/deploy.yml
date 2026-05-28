@@ -92,7 +92,7 @@ jobs:
           git reset --hard origin/main
 
           COMPOSE="docker compose -p codex-notifier --env-file .env.production -f docker-compose.app.yml"
-          $COMPOSE up -d --build --remove-orphans
+          $COMPOSE up -d --build
 
           APP_HOST_PORT="$(
             grep -E '^APP_HOST_PORT=' .env.production 2>/dev/null \
@@ -102,8 +102,21 @@ jobs:
               || true
           )"
           APP_HOST_PORT="${APP_HOST_PORT:-3010}"
+          HEALTH_URL="http://127.0.0.1:${APP_HOST_PORT}/api/health"
 
-          if ! curl -fsS --retry 12 --retry-delay 5 "http://127.0.0.1:${APP_HOST_PORT}/api/health"; then
+          healthy=0
+          for attempt in $(seq 1 30); do
+            if curl -fsS "$HEALTH_URL"; then
+              healthy=1
+              break
+            fi
+
+            echo "Healthcheck attempt ${attempt}/30 failed; waiting 5s..."
+            sleep 5
+          done
+
+          if [ "$healthy" -ne 1 ]; then
+            $COMPOSE ps
             $COMPOSE logs --tail=100 app
             exit 1
           fi
