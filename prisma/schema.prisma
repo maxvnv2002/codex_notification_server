@@ -14,6 +14,11 @@ enum PairingCodeStatus {
   EXPIRED
 }
 
+enum NotificationEventType {
+  COMPLETED
+  WAITING_FOR_INPUT
+}
+
 model TelegramUser {
   id             String        @id @default(uuid())
   telegramChatId String        @unique
@@ -61,18 +66,19 @@ model Device {
 }
 
 model NotificationLog {
-  id             String   @id @default(uuid())
+  id             String                @id @default(uuid())
   deviceId       String
-  device         Device   @relation(fields: [deviceId], references: [deviceId], onDelete: Cascade)
+  device         Device                @relation(fields: [deviceId], references: [deviceId], onDelete: Cascade)
+  eventType      NotificationEventType @default(COMPLETED)
   codexSessionId String?
   codexTurnId    String?
   projectName    String?
   gitBranch      String?
   message        String
-  createdAt      DateTime @default(now())
+  createdAt      DateTime              @default(now())
 
+  @@unique([deviceId, codexSessionId, codexTurnId, eventType], map: "NotificationLog_dedupe_event_key")
   @@index([deviceId])
   @@index([codexSessionId])
   @@index([codexTurnId])
-  @@unique([deviceId, codexSessionId, codexTurnId])
 }

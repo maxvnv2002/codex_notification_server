@@ -1,10 +1,10 @@
-import { Prisma } from "@prisma/client";
+import { NotificationEventType, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { jsonError, jsonOk, formatZodError, methodNotAllowed } from "@/lib/api";
 import { decryptSecret } from "@/lib/encryption";
 import { prisma } from "@/lib/prisma";
 import { isTimestampWithinSkew, verifyHmacSignature } from "@/lib/signature";
-import { limitTelegramText, sendTelegramMessage } from "@/lib/telegram";
+import { escapeTelegramHtml, limitTelegramText, sendTelegramMessage } from "@/lib/telegram";
 
 export const runtime = "nodejs";
 export const GET = methodNotAllowed;
@@ -29,6 +29,13 @@ const notifySchema = z.object({
   codexSessionId: nullableString(200),
   codexTurnId: nullableString(200),
   model: nullableString(100),
+  eventType: z.enum(["completed", "waiting_for_input"]).default("completed"),
+  responseOptions: z
+    .array(z.string().trim().min(1).max(300))
+    .max(10)
+    .optional()
+    .nullable()
+    .transform((value) => value ?? []),
   finishedAt: z.string().datetime().optional().nullable(),
   message: z.string().min(1).max(20000)
 });
@@ -64,6 +71,7 @@ export async function POST(request: Request) {
     }
 
     const input = parsed.data;
+    const eventType = toNotificationEventType(input.eventType);
 
     if (input.deviceId !== headerDeviceId) {
       return jsonError("Body deviceId does not match x-codex-device-id", 401);
@@ -103,7 +111,8 @@ export async function POST(request: Request) {
         where: {
           deviceId: headerDeviceId,
           codexSessionId: input.codexSessionId,
-          codexTurnId: input.codexTurnId
+          codexTurnId: input.codexTurnId,
+          eventType
         }
       });
 
@@ -116,13 +125,16 @@ export async function POST(request: Request) {
     }
 
     const telegramText = buildNotificationText(input);
-    await sendTelegramMessage(device.telegramUser.telegramChatId, telegramText);
+    await sendTelegramMessage(device.telegramUser.telegramChatId, telegramText, {
+      parseMode: "HTML"
+    });
 
     try {
       await prisma.$transaction([
         prisma.notificationLog.create({
           data: {
             deviceId: headerDeviceId,
+            eventType,
             codexSessionId: input.codexSessionId,
             codexTurnId: input.codexTurnId,
             projectName: input.projectName,
@@ -167,19 +179,59 @@ function parseJson(rawBody: string): unknown {
 }
 
 function buildNotificationText(input: z.infer<typeof notifySchema>): string {
-  return limitTelegramText(`Codex завершил работу
+  const status =
+    input.eventType === "waiting_for_input" ? "Ожидает ответ" : "Завершил работу";
+  const options = input.responseOptions
+    .slice(0, 10)
+    .map((option, index) => `${index + 1}. ${escapeTelegramHtml(limitDisplayText(option, 180))}`)
+    .join("\n");
+  const optionsBlock = options ? `\n\n<b>Варианты ответа</b>\n${options}` : "";
+  const header = `<b>Codex: ${status}</b>
 
-Проект: ${input.projectName ?? "unknown"}
-Ветка: ${input.gitBranch ?? "unknown"}
-Устройство: ${input.deviceName}
-Модель: ${input.model ?? "unknown"}
-Session: ${input.codexSessionId ?? "unknown"}
-Turn: ${input.codexTurnId ?? "unknown"}
+<b>Проект:</b> ${escapeTelegramHtml(limitDisplayText(input.projectName ?? "unknown", 120))}
+<b>Ветка:</b> ${escapeTelegramHtml(limitDisplayText(input.gitBranch ?? "unknown", 120))}
+<b>Устройство:</b> ${escapeTelegramHtml(limitDisplayText(input.deviceName, 100))}
+${optionsBlock}
 
-Итог:
-${input.message}`);
+<b>Итог</b>
+<pre>`;
+  const footer = "</pre>";
+  const message = limitHtmlPreText(input.message, header, footer);
+
+  return limitTelegramText(`${header}${message}${footer}`);
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+function toNotificationEventType(eventType: z.infer<typeof notifySchema>["eventType"]) {
+  return eventType === "waiting_for_input"
+    ? NotificationEventType.WAITING_FOR_INPUT
+    : NotificationEventType.COMPLETED;
+}
+
+function limitHtmlPreText(value: string, header: string, footer: string): string {
+  const suffix = "\n...[truncated]";
+  let remaining = value;
+
+  while (remaining.length > 0) {
+    const escaped = escapeTelegramHtml(remaining);
+    if (`${header}${escaped}${footer}`.length <= 4096) {
+      return escaped;
+    }
+
+    const nextLength = Math.max(0, Math.floor(remaining.length * 0.8) - suffix.length);
+    remaining = `${remaining.slice(0, nextLength)}${suffix}`;
+  }
+
+  return "";
+}
+
+function limitDisplayText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength - 1)}…`;
 }
