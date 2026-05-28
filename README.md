@@ -306,10 +306,16 @@ Body:
   "codexSessionId": "session-id",
   "codexTurnId": "turn-id",
   "model": "gpt-5.5-thinking",
+  "eventType": "completed",
+  "responseOptions": [],
   "finishedAt": "2026-05-25T18:00:00.000Z",
   "message": "Codex завершил работу..."
 }
 ```
+
+`eventType` is optional and defaults to `completed`. Use `waiting_for_input` when Codex is waiting for approval, a choice, or a user answer. `responseOptions` is optional and can include up to 10 suggested answers/actions for `waiting_for_input`.
+
+Telegram messages show only the status, project, branch, device, response options, and result text. `model`, `codexSessionId`, and `codexTurnId` are still accepted, logged, and used for duplicate protection, but are not displayed to the user.
 
 Signature input:
 
@@ -334,7 +340,7 @@ The endpoint rejects stale timestamps older than 5 minutes, revoked devices, mis
 Duplicate protection is based on:
 
 ```text
-deviceId + codexSessionId + codexTurnId
+deviceId + codexSessionId + codexTurnId + eventType
 ```
 
 When the same tuple is received again, the server returns:

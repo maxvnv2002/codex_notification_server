@@ -8,6 +8,10 @@ type TelegramApiResponse = {
   description?: string;
 };
 
+type SendTelegramMessageOptions = {
+  parseMode?: "HTML";
+};
+
 export class TelegramApiError extends Error {
   constructor(
     message: string,
@@ -27,11 +31,24 @@ export function limitTelegramText(text: string): string {
   return text.slice(0, TELEGRAM_TEXT_LIMIT - 1) + "…";
 }
 
-export async function sendTelegramMessage(chatId: string, text: string): Promise<void> {
+export async function sendTelegramMessage(
+  chatId: string,
+  text: string,
+  options: SendTelegramMessageOptions = {}
+): Promise<void> {
   const { TELEGRAM_BOT_TOKEN } = getServerEnv();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TELEGRAM_REQUEST_TIMEOUT_MS);
   let response: Response;
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    text: limitTelegramText(text),
+    disable_web_page_preview: true
+  };
+
+  if (options.parseMode) {
+    body.parse_mode = options.parseMode;
+  }
 
   try {
     response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -39,11 +56,7 @@ export async function sendTelegramMessage(chatId: string, text: string): Promise
       headers: {
         "content-type": "application/json"
       },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: limitTelegramText(text),
-        disable_web_page_preview: true
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
   } catch (error) {
@@ -75,6 +88,13 @@ export async function sendTelegramMessage(chatId: string, text: string): Promise
       payload?.description
     );
   }
+}
+
+export function escapeTelegramHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 export function formatDateForTelegram(date: Date): string {
