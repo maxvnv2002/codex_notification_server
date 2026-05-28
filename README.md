@@ -174,6 +174,64 @@ docker compose --env-file .env.production up -d --build
 docker compose --env-file .env.production down
 ```
 
+## CI/CD Deploy
+
+GitHub Actions deploys automatically after changes are merged into `main`. The workflow runs:
+
+```bash
+npm ci
+npm run prisma:generate
+npm run build
+```
+
+If checks pass, it connects to the VPS over SSH and runs `docker-compose.app.yml`. This keeps the external Caddy setup untouched and only rebuilds the `codex-notifier` app/db stack.
+
+Required GitHub repository secrets:
+
+```text
+DEPLOY_HOST=147.90.9.53
+DEPLOY_PORT=22
+DEPLOY_USER=deploy
+DEPLOY_SSH_KEY=<private SSH key for deploy user>
+DEPLOY_PATH=/opt/codex-notifier
+```
+
+Prepare the VPS deploy user:
+
+```bash
+adduser deploy
+usermod -aG docker deploy
+mkdir -p /home/deploy/.ssh
+nano /home/deploy/.ssh/authorized_keys
+chown -R deploy:deploy /home/deploy/.ssh
+chmod 700 /home/deploy/.ssh
+chmod 600 /home/deploy/.ssh/authorized_keys
+chown -R deploy:deploy /opt/codex-notifier
+```
+
+Verify commands as `deploy`:
+
+```bash
+cd /opt/codex-notifier
+git fetch origin main
+docker compose -p codex-notifier --env-file .env.production -f docker-compose.app.yml ps
+```
+
+If the repository remote on the VPS uses `git@github.com:...`, add an SSH key for the `deploy` user to GitHub as a repository deploy key before enabling the workflow.
+
+The deploy job runs:
+
+```bash
+cd /opt/codex-notifier
+git fetch origin main
+git checkout main
+git reset --hard origin/main
+docker compose -p codex-notifier --env-file .env.production -f docker-compose.app.yml up -d --build --remove-orphans
+curl -fsS http://127.0.0.1:${APP_HOST_PORT:-3010}/api/health
+```
+
+You can also run the workflow manually from GitHub Actions with `workflow_dispatch` after selecting the `main` branch. `.env.production` stays only on the server.
+
 ## Pairing Codes
 
 - A `pairingCode` is created by the Telegram bot.
