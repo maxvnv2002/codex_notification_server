@@ -8,8 +8,23 @@ type TelegramApiResponse = {
   description?: string;
 };
 
+export type TelegramInlineKeyboardButton = {
+  text: string;
+  callback_data: string;
+};
+
+export type TelegramInlineKeyboardMarkup = {
+  inline_keyboard: TelegramInlineKeyboardButton[][];
+};
+
 type SendTelegramMessageOptions = {
   parseMode?: "HTML";
+  replyMarkup?: TelegramInlineKeyboardMarkup;
+};
+
+type EditTelegramMessageOptions = {
+  parseMode?: "HTML";
+  replyMarkup?: TelegramInlineKeyboardMarkup;
 };
 
 export class TelegramApiError extends Error {
@@ -36,22 +51,58 @@ export async function sendTelegramMessage(
   text: string,
   options: SendTelegramMessageOptions = {}
 ): Promise<void> {
-  const { TELEGRAM_BOT_TOKEN } = getServerEnv();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TELEGRAM_REQUEST_TIMEOUT_MS);
-  let response: Response;
   const body: Record<string, unknown> = {
     chat_id: chatId,
     text: limitTelegramText(text),
     disable_web_page_preview: true
   };
 
-  if (options.parseMode) {
-    body.parse_mode = options.parseMode;
+  applyTelegramMessageOptions(body, options);
+
+  await telegramApiRequest("sendMessage", body);
+}
+
+export async function editTelegramMessageText(
+  chatId: string,
+  messageId: number,
+  text: string,
+  options: EditTelegramMessageOptions = {}
+): Promise<void> {
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    message_id: messageId,
+    text: limitTelegramText(text),
+    disable_web_page_preview: true
+  };
+
+  applyTelegramMessageOptions(body, options);
+
+  await telegramApiRequest("editMessageText", body);
+}
+
+export async function answerTelegramCallbackQuery(
+  callbackQueryId: string,
+  text?: string
+): Promise<void> {
+  const body: Record<string, unknown> = {
+    callback_query_id: callbackQueryId
+  };
+
+  if (text) {
+    body.text = text;
   }
 
+  await telegramApiRequest("answerCallbackQuery", body);
+}
+
+async function telegramApiRequest(method: string, body: Record<string, unknown>): Promise<void> {
+  const { TELEGRAM_BOT_TOKEN } = getServerEnv();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TELEGRAM_REQUEST_TIMEOUT_MS);
+  let response: Response;
+
   try {
-    response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`, {
       method: "POST",
       headers: {
         "content-type": "application/json"
@@ -61,13 +112,11 @@ export async function sendTelegramMessage(
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new TelegramApiError(
-        `Telegram API sendMessage timed out after ${TELEGRAM_REQUEST_TIMEOUT_MS}ms`
-      );
+      throw new TelegramApiError(`Telegram API ${method} timed out after ${TELEGRAM_REQUEST_TIMEOUT_MS}ms`);
     }
 
     throw new TelegramApiError(
-      `Telegram API sendMessage failed: ${error instanceof Error ? error.message : "network error"}`
+      `Telegram API ${method} failed: ${error instanceof Error ? error.message : "network error"}`
     );
   } finally {
     clearTimeout(timeout);
@@ -83,10 +132,23 @@ export async function sendTelegramMessage(
 
   if (!response.ok || !payload?.ok) {
     throw new TelegramApiError(
-      `Telegram API sendMessage failed: ${payload?.description ?? response.statusText}`,
+      `Telegram API ${method} failed: ${payload?.description ?? response.statusText}`,
       response.status,
       payload?.description
     );
+  }
+}
+
+function applyTelegramMessageOptions(
+  body: Record<string, unknown>,
+  options: SendTelegramMessageOptions | EditTelegramMessageOptions
+): void {
+  if (options.parseMode) {
+    body.parse_mode = options.parseMode;
+  }
+
+  if (options.replyMarkup) {
+    body.reply_markup = options.replyMarkup;
   }
 }
 

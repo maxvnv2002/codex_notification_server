@@ -166,10 +166,66 @@ export async function revokePairingCode(
     }
   });
 
+  return revokePairingCodeRecord(pairingCode);
+}
+
+export async function revokePairingCodeById(
+  telegramChatId: string,
+  pairingCodeId: string
+): Promise<RevokePairingCodeResult> {
+  const pairingCode = await prisma.pairingCode.findFirst({
+    where: {
+      id: pairingCodeId,
+      telegramUser: {
+        telegramChatId
+      }
+    }
+  });
+
+  return revokePairingCodeRecord(pairingCode);
+}
+
+export async function listRevocablePairingCodes(telegramChatId: string): Promise<PairingCode[]> {
+  return prisma.pairingCode.findMany({
+    where: {
+      status: PairingCodeStatus.ACTIVE,
+      expiresAt: {
+        gt: new Date()
+      },
+      telegramUser: {
+        telegramChatId
+      }
+    },
+    orderBy: {
+      createdAt: "desc"
+    },
+    take: PAIRING_CODE_LIST_LIMIT
+  });
+}
+
+async function revokePairingCodeRecord(
+  pairingCode: PairingCode | null
+): Promise<RevokePairingCodeResult> {
   if (!pairingCode) {
     return {
       ok: false,
       message: "Код не найден среди Ваших pairingCode."
+    };
+  }
+
+  if (pairingCode.status === PairingCodeStatus.ACTIVE && pairingCode.expiresAt <= new Date()) {
+    await prisma.pairingCode.update({
+      where: {
+        id: pairingCode.id
+      },
+      data: {
+        status: PairingCodeStatus.EXPIRED
+      }
+    });
+
+    return {
+      ok: false,
+      message: "Этот pairingCode уже истек."
     };
   }
 

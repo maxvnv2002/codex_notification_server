@@ -251,6 +251,14 @@ Bot commands:
 /help - show help
 ```
 
+The bot also exposes the same actions through Telegram inline buttons:
+
+- `Новый код` creates a new `pairingCode`;
+- `Мои коды` shows the last 20 codes;
+- `Отозвать` edits the current bot message into a code picker with active, non-expired codes;
+- selecting a code revokes it after checking that it belongs to the current Telegram chat;
+- `Помощь` includes the Codex plugin installation commands and pairing steps.
+
 ## Register Device
 
 Endpoint:
