@@ -288,7 +288,7 @@ export function normalizePairingCode(code: string): string {
 export function formatPairingCodeForTelegram(pairingCode: PairingCode): string {
   const lines = [
     pairingCode.code,
-    `Статус: ${pairingCode.status}`,
+    `Статус: ${formatPairingCodeStatusForTelegram(pairingCode.status)}`,
     `Создан: ${formatDateForTelegram(pairingCode.createdAt)}`,
     `Истекает: ${formatDateForTelegram(pairingCode.expiresAt)}`
   ];
@@ -302,6 +302,21 @@ export function formatPairingCodeForTelegram(pairingCode: PairingCode): string {
   }
 
   return lines.join("\n");
+}
+
+export function formatPairingCodeStatusForTelegram(status: PairingCodeStatus): string {
+  switch (status) {
+    case PairingCodeStatus.ACTIVE:
+      return "✅ Активен";
+    case PairingCodeStatus.USED:
+      return "☑️ Использован";
+    case PairingCodeStatus.REVOKED:
+      return "❌ Отозван";
+    case PairingCodeStatus.EXPIRED:
+      return "⏳ Истек";
+    default:
+      return "❔ Неизвестен";
+  }
 }
 
 async function sendPairingCodeExpiredMessage(chatId: string, code: string): Promise<void> {
