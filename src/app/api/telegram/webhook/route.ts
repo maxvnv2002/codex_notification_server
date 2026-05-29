@@ -77,6 +77,7 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
       break;
     case "/help":
       await sendTelegramMessage(String(message.chat.id), helpText(), {
+        parseMode: "HTML",
         replyMarkup: mainMenuKeyboard()
       });
       break;
@@ -122,7 +123,7 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery): Promis
         await editRevokeSelectionMessage(chatId, messageId);
         break;
       case CALLBACK_HELP:
-        await editOrSendMessage(chatId, messageId, helpText(), mainMenuKeyboard());
+        await editOrSendMessage(chatId, messageId, helpText(), mainMenuKeyboard(), "HTML");
         break;
       default:
         if (callbackQuery.data.startsWith(CALLBACK_REVOKE_PREFIX)) {
@@ -277,10 +278,12 @@ async function editOrSendMessage(
   chatId: string,
   messageId: number,
   text: string,
-  replyMarkup?: TelegramInlineKeyboardMarkup
+  replyMarkup?: TelegramInlineKeyboardMarkup,
+  parseMode?: "HTML"
 ): Promise<void> {
   try {
     await editTelegramMessageText(chatId, messageId, text, {
+      parseMode,
       replyMarkup
     });
   } catch (error) {
@@ -289,6 +292,7 @@ async function editOrSendMessage(
     }
 
     await sendTelegramMessage(chatId, text, {
+      parseMode,
       replyMarkup
     });
   }
@@ -335,24 +339,23 @@ ${code}
 }
 
 function helpText(): string {
-  return `Codex Telegram Notifier
+  return `<b>Codex Telegram Notifier</b>
 
-Команды бота:
-/newcode - создать новый pairingCode
-/codes - список Ваших кодов
-/revoke CODE - отозвать активный pairingCode
-/help - справка
+<b>Команды бота</b>
+<code>/newcode</code> — создать новый pairingCode
+<code>/codes</code> — показать список кодов
+<code>/revoke CODE</code> — отозвать активный код
+<code>/help</code> — открыть справку
 
-Установка плагина в Codex:
-\`\`\`
-codex plugin marketplace add https://github.com/maxvnv2002/codex_telegram_notifier_plugin.git
-codex plugin add codex-telegram-notifier@codex-telegram-notifier
-\`\`\`
+<b>Установка плагина в Codex</b>
+<pre><code>codex plugin marketplace add https://github.com/maxvnv2002/codex_telegram_notifier_plugin.git
+codex plugin add codex-telegram-notifier@codex-telegram-notifier</code></pre>
 
-После установки:
+<b>Подключение</b>
 1. Перезапустите Codex.
-2. Получите pairingCode кнопкой «Новый код» или командой /newcode.
-3. В Codex выполните /notifier_start CODE.
+2. Получите pairingCode кнопкой «Новый код» или командой <code>/newcode</code>.
+3. В Codex выполните:
+<pre><code>/notifier_start CODE</code></pre>
 
 После подключения уведомления будут приходить в этот Telegram-чат.`;
 }
